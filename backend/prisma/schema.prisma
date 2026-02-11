@@ -1,0 +1,148 @@
+// Prisma Schema for Bingo2Gether
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?   // Null if OAuth only
+  name          String?
+  
+  // OAuth
+  googleId      String?   @unique
+  facebookId    String?   @unique
+  
+  // Couple relationship
+  role          String?   // 'owner' | 'partner' | null (no couple yet)
+  coupleId      String?
+  couple        Couple?   @relation(fields: [coupleId], references: [id])
+  
+  // Legacy fields kept for backward compat
+  stripeCustomerId String?
+  mpCustomerId  String?
+  
+  // Marketing & Source
+  source        String?   // 'google' | 'email'
+  marketingOptIn Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  pushSubscriptions PushSubscription[]
+  
+  @@index([email])
+  @@index([googleId])
+  @@index([facebookId])
+  @@index([coupleId])
+  @@index([source])
+}
+
+model Couple {
+  id              String    @id @default(uuid())
+  
+  // Members
+  ownerUserId     String
+  partnerUserId   String?   // null until partner accepts invite
+  
+  // Plan
+  planType        String    @default("free") // 'free' | 'mensal' | 'anual' | 'vitalicio'
+  planExpiresAt   DateTime? // null for free or vitalício
+  
+  // Relations
+  users           User[]
+  games           Game[]
+  invites         Invite[]
+  payments        Payment[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([ownerUserId])
+  @@index([partnerUserId])
+}
+
+model Invite {
+  id            String    @id @default(uuid())
+  coupleId      String
+  couple        Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  
+  email         String    // Email of the person being invited
+  token         String    @unique @default(uuid())
+  status        String    @default("pending") // 'pending' | 'accepted' | 'expired'
+  
+  expiresAt     DateTime  // 48 hours from creation
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([coupleId])
+  @@index([token])
+  @@index([email])
+}
+
+model Game {
+  id            String    @id @default(uuid())
+  
+  // Game belongs to a couple (shared state)
+  coupleId      String
+  couple        Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  
+  // Game State (JSON) - Entire GameState object from frontend
+  state         Json
+  
+  // Metadata for queries
+  isSetup       Boolean
+  lastPlayedAt  DateTime?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([coupleId])
+  @@index([lastPlayedAt])
+}
+
+model PushSubscription {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  endpoint      String    @unique
+  keys          Json      // { p256dh, auth }
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([userId])
+}
+
+model Payment {
+  id            String    @id @default(uuid())
+  
+  // Payment belongs to a couple
+  coupleId      String
+  couple        Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  
+  provider      String    // 'stripe' | 'mercadopago'
+  providerId    String    // Payment ID from provider
+  planType      String    @default("mensal") // Which plan was purchased
+  amount        Float
+  currency      String    @default("BRL")
+  status        String    // 'pending' | 'completed' | 'failed' | 'refunded'
+  
+  // Metadata
+  metadata      Json?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([coupleId])
+  @@index([providerId])
+  @@index([status])
+}

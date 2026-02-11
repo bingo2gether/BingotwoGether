@@ -1,0 +1,35 @@
+{
+  "name": "bingo2gether-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host --port 8080",
+    "test": "echo 'No tests specified' && exit 0"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "@react-oauth/google": "^0.13.4",
+    "@stripe/react-stripe-js": "latest",
+    "@stripe/stripe-js": "latest",
+    "axios": "latest",
+    "clsx": "latest",
+    "framer-motion": "latest",
+    "jwt-decode": "^4.0.0",
+    "lucide-react": "latest",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "latest",
+    "workbox-window": "latest",
+    "zustand": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  }
+}

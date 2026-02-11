@@ -1,0 +1,253 @@
+/* Global Styles for Bingo2Gether */
+:root {
+  --brand-purple: #4B1E6D;
+  --brand-magenta: #C13C7A;
+  --brand-gold: #E6C26E;
+
+  /* Dynamic colors that will be overridden by skins */
+  --primary-color: #4B1E6D;
+  --secondary-color: #C13C7A;
+  --accent-color: #E6C26E;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Animations */
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-5px);
+  }
+
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
+}
+
+/* Number Reveal Animation */
+@keyframes number-reveal {
+  0% {
+    transform: scale(0) rotateY(180deg);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.2) rotateY(0deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1) rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(230, 194, 110, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 40px rgba(230, 194, 110, 0.5);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-number-reveal {
+  animation: number-reveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out forwards;
+}
+
+/* Glassmorphism */
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Font Display */
+.font-display {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* ======================================================
+   PRINT STYLES — Separate layer, doesn't affect digital UI
+   ====================================================== */
+@media print {
+
+  /* Hide EVERYTHING except the print content */
+  body>* {
+    visibility: hidden !important;
+  }
+
+  /* Show only the print content area */
+  #print-content-area,
+  #print-content-area * {
+    visibility: visible !important;
+  }
+
+  #print-content-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 8mm !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  /* Table mode: fit all numbers on one page */
+  .print-table-grid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-table-grid>div {
+    border: 1px solid #999 !important;
+    color: #333 !important;
+    background: white !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Mark drawn numbers with strikethrough */
+  .print-table-grid>div.line-through {
+    background: #eee !important;
+    color: #aaa !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Cards mode: 4 cards per page (2x2) */
+  .print-cards-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10mm !important;
+  }
+
+  .print-cards-grid>div {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    border: 2px solid #333 !important;
+    border-radius: 4px !important;
+    padding: 4mm !important;
+  }
+
+  /* Force 4 cards per page with page breaks */
+  .print-cards-grid>div:nth-child(4n + 1) {
+    page-break-before: auto;
+  }
+
+  .print-cards-grid>div:nth-child(4n + 5) {
+    page-break-before: always;
+  }
+
+  .print-cards-grid>div .grid>div {
+    border: 1px solid #666 !important;
+    color: #333 !important;
+    font-weight: bold !important;
+  }
+
+  /* Card headers */
+  .print-cards-grid>div>div:first-child {
+    font-size: 10px !important;
+    border-bottom: 1px solid #ddd !important;
+  }
+
+  /* Print header/footer styling */
+  .print-header h2 {
+    font-size: 16pt !important;
+    color: #333 !important;
+    margin-bottom: 2mm !important;
+  }
+
+  .print-header p {
+    font-size: 8pt !important;
+    color: #999 !important;
+  }
+
+  .print-footer p {
+    font-size: 7pt !important;
+    color: #ccc !important;
+  }
+
+  /* Hide scrollbars and overflow in print */
+  * {
+    overflow: visible !important;
+  }
+
+  /* Ensure backgrounds print */
+  .bg-slate-100 {
+    background-color: #eee !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+}
