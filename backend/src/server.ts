@@ -30,7 +30,15 @@ app.use(cors({
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
 
-        if (allowedOrigins.indexOf(origin) !== -1 || !process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
+        // Allow explicit origins + any Vercel preview/production URL
+        const isAllowed =
+            allowedOrigins.indexOf(origin) !== -1 ||
+            origin.endsWith('.vercel.app') ||
+            origin.endsWith('.onrender.com') ||
+            !process.env.NODE_ENV ||
+            process.env.NODE_ENV === 'development';
+
+        if (isAllowed) {
             callback(null, true);
         } else {
             console.warn('Blocked by CORS:', origin);
