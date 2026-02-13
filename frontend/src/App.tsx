@@ -26,8 +26,10 @@ const AppContent: React.FC = () => {
   usePushNotifications(isAuthenticated);
 
   useEffect(() => {
+    // Start Firebase auth listener for real-time state sync
+    const unsubscribe = useAuthStore.getState().initAuthListener();
+
     const init = async () => {
-      await checkAuth();
       await useAuthStore.getState().checkPlanStatus();
 
       const saved = localStorage.getItem('saveTogetherState');
@@ -49,8 +51,11 @@ const AppContent: React.FC = () => {
       setShowSplash(false);
     }, 4500);
 
-    return () => clearTimeout(timer);
-  }, [checkAuth]);
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {

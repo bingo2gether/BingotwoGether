@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import {
-    LogIn, UserPlus, Mail, Lock, User, ArrowRight, Sparkles,
+    LogIn, UserPlus, Mail, Lock, ArrowRight,
     ShieldCheck, Zap, Heart, Star, ChevronLeft
 } from 'lucide-react';
 import { BingoLogo } from '../Onboarding';
 import { PricingModal } from '../premium/PricingModal';
-import { GoogleLogin } from '@react-oauth/google';
 
 interface LoginPageProps {
     onBack?: () => void;
@@ -25,7 +24,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
     const [showPricingModal, setShowPricingModal] = useState(false);
     const [marketingOptIn, setMarketingOptIn] = useState(true);
 
-    const { login, register } = useAuthStore();
+    const { login, register, googleLogin } = useAuthStore();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -40,19 +39,35 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
             }
             if (onSuccess) onSuccess();
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Acesso negado. Verifique suas credenciais.');
+            // Firebase error messages are more descriptive
+            const firebaseErrors: Record<string, string> = {
+                'auth/user-not-found': 'Usuário não encontrado. Crie uma conta primeiro.',
+                'auth/wrong-password': 'Senha incorreta. Tente novamente.',
+                'auth/invalid-credential': 'Credenciais inválidas. Verifique email e senha.',
+                'auth/email-already-in-use': 'Este email já está cadastrado. Faça login.',
+                'auth/weak-password': 'Senha fraca. Use no mínimo 6 caracteres.',
+                'auth/invalid-email': 'Email inválido. Verifique o formato.',
+                'auth/too-many-requests': 'Muitas tentativas. Aguarde um momento.',
+            };
+            const code = err?.code || '';
+            setError(firebaseErrors[code] || err.message || 'Erro ao autenticar. Tente novamente.');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleGoogleSuccess = (credentialResponse: any) => {
-        if (credentialResponse.credential) {
-            useAuthStore.getState().googleLogin(credentialResponse.credential)
-                .then(() => {
-                    if (onSuccess) onSuccess();
-                })
-                .catch(() => setError('Falha ao autenticar com Google'));
+    const handleGoogleLogin = async () => {
+        setError('');
+        setLoading(true);
+        try {
+            await googleLogin();
+            if (onSuccess) onSuccess();
+        } catch (err: any) {
+            if (err?.code !== 'auth/popup-closed-by-user') {
+                setError('Falha ao autenticar com Google. Tente novamente.');
+            }
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -158,6 +173,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
 
                             {!isLogin && (
                                 <motion.div
+                                    key="name-field"
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="space-y-2"
+                                >
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Seu Nome</label>
+                                    <div className="relative group">
+                                        <UserPlus className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-brand-gold transition-colors" size={18} />
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            onChange={e => setName(e.target.value)}
+                                            placeholder="Como você se chama?"
+                                            className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 pl-12 pr-4 font-bold text-white focus:border-brand-gold outline-none transition-all placeholder:text-slate-700"
+                                        />
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {!isLogin && (
+                                <motion.div
                                     key="marketing-opt-in"
                                     initial={{ opacity: 0, y: -10 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -218,16 +254,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
                         </div>
                     </form>
 
-                    <div className="flex flex-col gap-3">
-                        <div className="w-full flex justify-center">
-                            <GoogleLogin
-                                onSuccess={handleGoogleSuccess}
-                                onError={() => setError('Falha no login Google')}
-                                theme="filled_black"
-                                shape="pill"
-                                width="350px"
-                            />
+                    {/* Google Login Button */}
+                    <div className="flex flex-col gap-3 mt-6">
+                        <div className="flex items-center gap-4 mb-2">
+                            <div className="flex-1 h-px bg-slate-800"></div>
+                            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">ou</span>
+                            <div className="flex-1 h-px bg-slate-800"></div>
                         </div>
+
+                        <button
+                            onClick={handleGoogleLogin}
+                            disabled={loading}
+                            className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-sm text-white hover:bg-white/10 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24">
+                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                            </svg>
+                            Entrar com Google
+                        </button>
 
                         <div className="flex justify-center gap-6 mt-4">
                             <div className="flex flex-col items-center gap-1 opacity-40 hover:opacity-100 transition-opacity cursor-help">
@@ -244,24 +291,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
                             </div>
                         </div>
                     </div>
-                </motion.div>
-
-                {/* Dynamic Footer Switch */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                    className="mt-10 text-center"
-                >
-                    <p className="text-slate-500 font-medium">
-                        {isLogin ? 'Ainda não tem conta?' : 'Já possui acesso?'}
-                        <button
-                            onClick={() => setIsLogin(!isLogin)}
-                            className="ml-2 text-brand-gold font-black underline underline-offset-4 hover:text-white transition-colors"
-                        >
-                            {isLogin ? 'Cadastre-se agora' : 'Faça login'}
-                        </button>
-                    </p>
                 </motion.div>
 
                 <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} />

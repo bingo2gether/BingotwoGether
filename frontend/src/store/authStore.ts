@@ -1,4 +1,14 @@
 import { create } from 'zustand';
+import {
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signInWithPopup,
+    signOut,
+    onAuthStateChanged,
+    updateProfile,
+    type User as FirebaseUser
+} from 'firebase/auth';
+import { auth, googleProvider } from '../services/firebaseConfig';
 import api from '../services/api';
 
 interface User {
@@ -20,13 +30,15 @@ interface AuthState {
     token: string | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    firebaseUser: FirebaseUser | null;
 
     // Auth actions
     login: (email: string, password: string) => Promise<void>;
     register: (email: string, password: string, name?: string, marketingOptIn?: boolean) => Promise<void>;
-    googleLogin: (token: string) => Promise<void>;
+    googleLogin: () => Promise<void>;
     logout: () => void;
     checkAuth: () => Promise<void>;
+    initAuthListener: () => () => void;
 
     // Couple actions
     createCouple: () => Promise<void>;
@@ -35,74 +47,123 @@ interface AuthState {
     checkPlanStatus: () => Promise<void>;
 }
 
+// Helper: sync user with backend after Firebase auth
+async function syncWithBackend(firebaseUser: FirebaseUser): Promise<{ token: string; user: User }> {
+    const idToken = await firebaseUser.getIdToken();
+
+    // Set token for API calls
+    api.defaults.headers.common['Authorization'] = `Bearer ${idToken}`;
+
+    try {
+        // Try to sync/create user on backend
+        const response = await api.post('/auth/firebase-sync', {
+            firebaseUid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || undefined,
+            source: firebaseUser.providerData[0]?.providerId === 'google.com' ? 'google' : 'email',
+        });
+        return { token: idToken, user: response.data.user };
+    } catch (error: any) {
+        // If backend is unreachable, create a local-only user profile
+        console.warn('Backend sync failed, using Firebase-only auth:', error.message);
+        return {
+            token: idToken,
+            user: {
+                id: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                name: firebaseUser.displayName || undefined,
+                role: null,
+                coupleId: null,
+                isPro: false,
+                planType: 'free',
+                planExpiresAt: null,
+                partnerEmail: null,
+                source: firebaseUser.providerData[0]?.providerId === 'google.com' ? 'google' : 'email',
+            }
+        };
+    }
+}
+
 export const useAuthStore = create<AuthState>((set: any, get: any) => ({
     user: null,
-    token: localStorage.getItem('auth_token'),
-    isAuthenticated: !!localStorage.getItem('auth_token'),
+    token: null,
+    isAuthenticated: false,
     isLoading: true,
+    firebaseUser: null,
 
     login: async (email: string, password: string) => {
-        try {
-            const response = await api.post('/auth/login', { email, password });
-            const { token, user } = response.data;
-
-            localStorage.setItem('auth_token', token);
-            set({ user, token, isAuthenticated: true });
-        } catch (error) {
-            throw error;
-        }
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        const { token, user } = await syncWithBackend(credential.user);
+        localStorage.setItem('auth_token', token);
+        set({ user, token, isAuthenticated: true, firebaseUser: credential.user });
     },
 
-    register: async (email: string, password: string, name?: string, marketingOptIn: boolean = true) => {
-        try {
-            const response = await api.post('/auth/register', { email, password, name, marketingOptIn });
-            const { token, user } = response.data;
+    register: async (email: string, password: string, name?: string, _marketingOptIn: boolean = true) => {
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
 
-            localStorage.setItem('auth_token', token);
-            set({ user, token, isAuthenticated: true });
-        } catch (error) {
-            throw error;
+        // Update display name in Firebase
+        if (name) {
+            await updateProfile(credential.user, { displayName: name });
         }
+
+        const { token, user } = await syncWithBackend(credential.user);
+        localStorage.setItem('auth_token', token);
+        set({ user, token, isAuthenticated: true, firebaseUser: credential.user });
     },
 
-    googleLogin: async (token: string) => {
-        try {
-            const response = await api.post('/auth/google-login', { token });
-            const { token: jwtToken, user } = response.data;
-
-            localStorage.setItem('auth_token', jwtToken);
-            set({ user, token: jwtToken, isAuthenticated: true });
-        } catch (error) {
-            throw error;
-        }
+    googleLogin: async () => {
+        const credential = await signInWithPopup(auth, googleProvider);
+        const { token, user } = await syncWithBackend(credential.user);
+        localStorage.setItem('auth_token', token);
+        set({ user, token, isAuthenticated: true, firebaseUser: credential.user });
     },
 
     logout: () => {
+        signOut(auth);
         localStorage.removeItem('auth_token');
-        set({ user: null, token: null, isAuthenticated: false });
-        window.location.href = '/'; // Redirect to home
+        delete api.defaults.headers.common['Authorization'];
+        set({ user: null, token: null, isAuthenticated: false, firebaseUser: null });
+        window.location.href = '/';
     },
 
     checkAuth: async () => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
+        // This is now handled by the auth listener, but keeping for compatibility
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
             set({ isLoading: false });
             return;
         }
 
         try {
-            const response = await api.get('/auth/me');
-            set({ user: response.data, isAuthenticated: true, isLoading: false });
+            const { token, user } = await syncWithBackend(currentUser);
+            localStorage.setItem('auth_token', token);
+            set({ user, token, isAuthenticated: true, isLoading: false, firebaseUser: currentUser });
         } catch (error) {
-            localStorage.removeItem('auth_token');
             set({ user: null, token: null, isAuthenticated: false, isLoading: false });
         }
     },
 
+    initAuthListener: () => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            if (firebaseUser) {
+                try {
+                    const { token, user } = await syncWithBackend(firebaseUser);
+                    localStorage.setItem('auth_token', token);
+                    set({ user, token, isAuthenticated: true, isLoading: false, firebaseUser });
+                } catch (error) {
+                    set({ isLoading: false });
+                }
+            } else {
+                localStorage.removeItem('auth_token');
+                set({ user: null, token: null, isAuthenticated: false, isLoading: false, firebaseUser: null });
+            }
+        });
+        return unsubscribe;
+    },
+
     createCouple: async () => {
         try {
-            const response = await api.post('/api/couple/create');
-            // Refresh user data to get the new coupleId and role
+            const response = await api.post('/couple/create');
             await get().checkAuth();
             return response.data;
         } catch (error) {
@@ -112,7 +173,7 @@ export const useAuthStore = create<AuthState>((set: any, get: any) => ({
 
     invitePartner: async (email: string) => {
         try {
-            const response = await api.post('/api/couple/invite', { email });
+            const response = await api.post('/couple/invite', { email });
             return response.data;
         } catch (error) {
             throw error;
@@ -121,8 +182,7 @@ export const useAuthStore = create<AuthState>((set: any, get: any) => ({
 
     acceptInvite: async (token: string) => {
         try {
-            const response = await api.post(`/api/couple/accept/${token}`);
-            // Refresh user data to update role and coupleId
+            const response = await api.post(`/couple/accept/${token}`);
             await get().checkAuth();
             return response.data;
         } catch (error) {
@@ -132,7 +192,7 @@ export const useAuthStore = create<AuthState>((set: any, get: any) => ({
 
     checkPlanStatus: async () => {
         try {
-            const response = await api.get('/api/couple/plan');
+            const response = await api.get('/couple/plan');
             const { planType, planExpiresAt, isPro } = response.data;
 
             set((state: AuthState) => ({

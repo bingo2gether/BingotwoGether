@@ -2,13 +2,94 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../prisma.js';
 import { User } from '@prisma/client';
-import { OAuth2Client } from 'google-auth-library';
 import { CoupleService } from './coupleService.js';
+import admin from 'firebase-admin';
 
 const SALT_ROUNDS = 12;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
+// Initialize Firebase Admin SDK (for token verification)
+if (!admin.apps.length) {
+    admin.initializeApp({
+        projectId: 'bingo2gether-f2631',
+    });
+}
+
 export class AuthService {
+    /**
+     * Sync a Firebase-authenticated user with the backend database.
+     * Creates the user if they don't exist, or returns the existing one.
+     */
+    static async firebaseSync(firebaseUid: string, email: string, name?: string, source: string = 'email') {
+        let user = await prisma.user.findUnique({ where: { email } });
+
+        if (user) {
+            // Update Firebase UID if not set
+            if (!user.googleId && source === 'google') {
+                user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: { googleId: firebaseUid, source: user.source || source }
+                });
+            }
+        } else {
+            // Create new user from Firebase auth
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    name: name || null,
+                    googleId: firebaseUid,
+                    source,
+                    marketingOptIn: true,
+                }
+            });
+        }
+
+        return this.buildUserProfile(user);
+    }
+
+    /**
+     * Verify a Firebase ID token and return the decoded payload.
+     */
+    static async verifyFirebaseToken(idToken: string) {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            return decodedToken;
+        } catch (error) {
+            console.error('Firebase token verification failed:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Verify token - tries Firebase first, then falls back to legacy JWT
+     */
+    static async verifyToken(token: string) {
+        // Try Firebase token first
+        const firebaseDecoded = await this.verifyFirebaseToken(token);
+        if (firebaseDecoded) {
+            // Find or create user by Firebase UID/email
+            const user = await prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { googleId: firebaseDecoded.uid },
+                        { email: firebaseDecoded.email }
+                    ]
+                }
+            });
+            return user;
+        }
+
+        // Fallback: try legacy JWT
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+            return user;
+        } catch {
+            return null;
+        }
+    }
+
+    // Keep legacy methods for backward compatibility
     static async register(email: string, password: string, name?: string, marketingOptIn: boolean = true) {
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
@@ -45,52 +126,15 @@ export class AuthService {
     }
 
     static async googleAuth(token: string) {
-        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-        const ticket = await client.verifyIdToken({
-            idToken: token,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
-
-        const payload = ticket.getPayload();
-        if (!payload) {
-            throw new Error('Invalid Google Token');
-        }
-
-        const { email, name, sub: googleId } = payload;
-
-        if (!email) {
-            throw new Error('Email not provided in Google Token');
-        }
-
-        let user = await prisma.user.findUnique({ where: { email } });
-
-        if (user) {
-            if (!user.googleId && googleId) {
-                user = await prisma.user.update({
-                    where: { id: user.id },
-                    data: { googleId, source: user.source || 'google' }
-                });
-            }
-        } else {
-            user = await prisma.user.create({
-                data: {
-                    email,
-                    name: name || 'Usuário Google',
-                    googleId,
-                    source: 'google',
-                    marketingOptIn: true, // OAuth users are usually opted in by default in this flow
-                }
-            });
-        }
-
-        return this.generateTokenWithPlan(user);
+        // This is now handled by Firebase on the frontend
+        // Keeping for backward compatibility
+        throw new Error('Use Firebase Auth for Google login');
     }
 
     /**
-     * Generate JWT token + user profile with couple/plan info.
+     * Build user profile with plan info (shared helper)
      */
-    static async generateTokenWithPlan(user: User) {
+    static async buildUserProfile(user: User) {
         let planInfo = { planType: 'free', isPro: false, planExpiresAt: null as string | null };
 
         if (user.coupleId) {
@@ -106,15 +150,7 @@ export class AuthService {
             }
         }
 
-        const payload = {
-            id: user.id,
-            email: user.email,
-        };
-
-        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
-
         return {
-            token,
             user: {
                 id: user.id,
                 email: user.email,
@@ -128,17 +164,18 @@ export class AuthService {
         };
     }
 
-    /**
-     * Legacy generateToken for backward compat
-     */
-    static generateToken(user: User) {
-        const payload = {
-            id: user.id,
-            email: user.email,
-        };
+    static async generateTokenWithPlan(user: User) {
+        const profile = await this.buildUserProfile(user);
 
+        const payload = { id: user.id, email: user.email };
         const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 
+        return { token, ...profile };
+    }
+
+    static generateToken(user: User) {
+        const payload = { id: user.id, email: user.email };
+        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
         return {
             token,
             user: {
@@ -152,47 +189,11 @@ export class AuthService {
         };
     }
 
-    static async verifyToken(token: string) {
-        try {
-            const decoded = jwt.verify(token, JWT_SECRET) as any;
-            const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-            return user;
-        } catch {
-            return null;
-        }
-    }
-
-    /**
-     * Get current user profile with plan info (for /me endpoint).
-     */
     static async getUserProfile(userId: string) {
         const user = await prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new Error('User not found');
 
-        let planInfo = { planType: 'free', isPro: false, planExpiresAt: null as string | null };
-
-        if (user.coupleId) {
-            try {
-                const status = await CoupleService.getPlanStatus(user.coupleId);
-                planInfo = {
-                    planType: status.planType,
-                    isPro: status.isPro,
-                    planExpiresAt: status.planExpiresAt ? status.planExpiresAt.toISOString() : null,
-                };
-            } catch {
-                // Fallback
-            }
-        }
-
-        return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            coupleId: user.coupleId,
-            isPro: planInfo.isPro,
-            planType: planInfo.planType,
-            planExpiresAt: planInfo.planExpiresAt,
-        };
+        const profile = await this.buildUserProfile(user);
+        return profile.user;
     }
 }

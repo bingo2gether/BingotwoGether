@@ -16,6 +16,7 @@
     "@stripe/stripe-js": "latest",
     "axios": "latest",
     "clsx": "latest",
+    "firebase": "^12.9.0",
     "framer-motion": "latest",
     "jwt-decode": "^4.0.0",
     "lucide-react": "latest",
