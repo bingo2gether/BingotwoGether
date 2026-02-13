@@ -7,12 +7,66 @@ import admin from 'firebase-admin';
 
 const SALT_ROUNDS = 12;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const FIREBASE_PROJECT_ID = 'bingo2gether-f2631';
 
 // Initialize Firebase Admin SDK (for token verification)
-if (!admin.apps.length) {
-    admin.initializeApp({
-        projectId: 'bingo2gether-f2631',
-    });
+let firebaseAdminReady = false;
+try {
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            projectId: FIREBASE_PROJECT_ID,
+        });
+    }
+    firebaseAdminReady = true;
+    console.log('Firebase Admin SDK initialized successfully');
+} catch (err: any) {
+    console.warn('Firebase Admin SDK initialization failed, using manual verification:', err?.message);
+}
+
+/**
+ * Manually verify a Firebase ID token by checking the JWT structure.
+ * This works without firebase-admin credentials by fetching Google's public keys.
+ */
+async function verifyFirebaseTokenManually(idToken: string): Promise<any | null> {
+    try {
+        // Decode without verification to check structure
+        const decoded = jwt.decode(idToken, { complete: true });
+        if (!decoded || typeof decoded === 'string' || !decoded.header || !decoded.payload) {
+            return null;
+        }
+
+        const kid = decoded.header.kid as string | undefined;
+        const payload = decoded.payload as any;
+        const { aud, iss, sub, email, exp } = payload;
+
+        // Validate Firebase token claims
+        if (aud !== FIREBASE_PROJECT_ID) return null;
+        if (!iss || !String(iss).includes('securetoken.google.com/' + FIREBASE_PROJECT_ID)) return null;
+        if (!sub || typeof sub !== 'string') return null;
+        if (exp && Number(exp) < Date.now() / 1000) return null;
+
+        // Fetch Google's public keys to verify signature
+        const response = await fetch(
+            'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+        );
+        const publicKeys = await response.json() as Record<string, string>;
+
+        if (!kid || !publicKeys[kid]) {
+            return null;
+        }
+
+        // Verify the token signature with Google's public key
+        const verified = jwt.verify(idToken, publicKeys[kid], {
+            algorithms: ['RS256'],
+            audience: FIREBASE_PROJECT_ID,
+            issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,
+        }) as any;
+
+        return verified;
+    } catch (error) {
+        console.error('Manual Firebase token verification failed:', error);
+        return null;
+    }
 }
 
 export class AuthService {
@@ -48,16 +102,22 @@ export class AuthService {
     }
 
     /**
-     * Verify a Firebase ID token and return the decoded payload.
+     * Verify a Firebase ID token.
+     * Tries firebase-admin first (if available), then manual verification.
      */
     static async verifyFirebaseToken(idToken: string) {
-        try {
-            const decodedToken = await admin.auth().verifyIdToken(idToken);
-            return decodedToken;
-        } catch (error) {
-            console.error('Firebase token verification failed:', error);
-            return null;
+        // Try firebase-admin SDK first (fastest, most reliable)
+        if (firebaseAdminReady) {
+            try {
+                const decodedToken = await admin.auth().verifyIdToken(idToken);
+                return decodedToken;
+            } catch (error) {
+                console.warn('Firebase Admin verifyIdToken failed, trying manual:', error);
+            }
         }
+
+        // Fallback: manually verify using Google's public keys
+        return verifyFirebaseTokenManually(idToken);
     }
 
     /**
@@ -71,7 +131,7 @@ export class AuthService {
             const user = await prisma.user.findFirst({
                 where: {
                     OR: [
-                        { googleId: firebaseDecoded.uid },
+                        { googleId: firebaseDecoded.uid || firebaseDecoded.sub },
                         { email: firebaseDecoded.email }
                     ]
                 }
@@ -126,8 +186,6 @@ export class AuthService {
     }
 
     static async googleAuth(token: string) {
-        // This is now handled by Firebase on the frontend
-        // Keeping for backward compatibility
         throw new Error('Use Firebase Auth for Google login');
     }
 

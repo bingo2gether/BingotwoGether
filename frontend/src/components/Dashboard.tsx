@@ -8,7 +8,7 @@ import {
   MessageSquare, Send, X, AlertTriangle, Info, Check,
   Sun, Moon, Monitor, Flame, Crown, Map as MapIcon, Heart,
   CalendarHeart, TrendingDown, RotateCcw, Printer, Settings2,
-  ArrowRight
+  ArrowRight, LogOut
 } from 'lucide-react';
 import GeminiCoach from './GeminiCoach';
 import GameSummary from './GameSummary';
@@ -17,6 +17,7 @@ import { useTheme } from '../ThemeContext';
 import { BingoLogo } from './Onboarding';
 import { PricingModal } from './premium/PricingModal';
 import { SKINS, SkinType } from '../skins';
+import { useAuthStore } from '../store/authStore';
 import { CoupleSettings } from './couple/CoupleSettings';
 
 interface DashboardProps {
@@ -29,6 +30,7 @@ const CARD_SIZE = 25; // Standard 5x5 Bingo size
 
 const Dashboard: React.FC<DashboardProps> = ({ gameState, onUpdateState, onReset }) => {
   const { theme, setTheme } = useTheme();
+  const { logout, user } = useAuthStore();
 
   // Alterado de boolean para guardar o modo inicial
   const [coachMode, setCoachMode] = useState<'incentive' | 'challenge' | null>(null);
@@ -551,6 +553,13 @@ const Dashboard: React.FC<DashboardProps> = ({ gameState, onUpdateState, onReset
               title="Minha Dupla"
             >
               <Heart size={18} className="fill-current" />
+            </button>
+            <button
+              onClick={logout}
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all active:scale-95 shadow-sm"
+              title="Sair"
+            >
+              <LogOut size={18} />
             </button>
           </div>
         </div>
