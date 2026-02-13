@@ -80,11 +80,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
                     </button>
                 ) : <div />}
                 <div className="flex items-center gap-2">
-                    <div className="px-3 py-1 bg-brand-gold/20 border border-brand-gold/30 rounded-full">
+                    <button
+                        onClick={() => setShowPricingModal(true)}
+                        className="px-3 py-1 bg-brand-gold/20 border border-brand-gold/30 rounded-full hover:bg-brand-gold/30 transition-all cursor-pointer"
+                    >
                         <span className="text-[10px] font-black text-brand-gold uppercase tracking-widest flex items-center gap-1">
                             <Star size={10} className="fill-current" /> Versão PRO
                         </span>
-                    </div>
+                    </button>
                 </div>
             </header>
 
@@ -199,6 +202,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ onBack, isInviteFlow = false, onS
                                 </>
                             )}
                         </button>
+
+                        {/* Toggle Login/Register - always visible */}
+                        <div className="text-center pt-2">
+                            <p className="text-slate-500 font-medium text-sm">
+                                {isLogin ? 'Ainda não tem conta?' : 'Já possui acesso?'}
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                                    className="ml-2 text-brand-gold font-black underline underline-offset-4 hover:text-white transition-colors"
+                                >
+                                    {isLogin ? 'Cadastre-se agora' : 'Faça login'}
+                                </button>
+                            </p>
+                        </div>
                     </form>
 
                     <div className="flex flex-col gap-3">
