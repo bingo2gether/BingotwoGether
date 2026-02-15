@@ -73,6 +73,15 @@ case $choice in
         # Initialize new git repository
         cd "$TARGET_REPO_NAME"
         git init
+        
+        # Configure git user if not already set (for this repository only)
+        if ! git config user.name > /dev/null 2>&1; then
+            git config user.name "Repository Cloner"
+        fi
+        if ! git config user.email > /dev/null 2>&1; then
+            git config user.email "clone@example.com"
+        fi
+        
         git add .
         git commit -m "Initial commit: Fresh start from BingotwoGether"
         
