@@ -97,8 +97,20 @@ cd backend && npx prisma studio
 3. Configurar pagamentos (Stripe + Mercado Pago)
 4. Gerar chaves VAPID para push notifications
 
+## Clonar para Novo Projeto
+
+Se você deseja usar este repositório como template para um novo projeto:
+
+```bash
+# Use o script automatizado
+./clone-to-fresh-start.sh
+```
+
+Ou veja o [guia completo de clonagem](docs/clone-repository.md) para instruções detalhadas.
+
 ## Documentação
 
+- [Clonar Repositório](docs/clone-repository.md)
 - [Setup de Serviços](docs/setup-services.md)
 - [Arquitetura](docs/architecture.md)
 - [API Reference](docs/api.md)
