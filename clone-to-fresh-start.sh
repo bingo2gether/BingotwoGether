@@ -76,6 +76,8 @@ case $choice in
         
         # Configure git user if not already set (for this repository only)
         if ! git config user.name > /dev/null 2>&1; then
+            echo -e "${YELLOW}Note: Setting temporary git user info for initial commit.${NC}"
+            echo -e "${YELLOW}You should configure your actual git credentials before pushing.${NC}"
             git config user.name "Repository Cloner"
         fi
         if ! git config user.email > /dev/null 2>&1; then
